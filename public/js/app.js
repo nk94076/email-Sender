@@ -28,16 +28,55 @@ const quill = new Quill('#editor', {
   },
 });
 
-// Quill's default image button opens a file picker and embeds the image as
-// base64, which Gmail and most inboxes strip from delivered emails. Force a
-// hosted-URL prompt instead so images actually survive sending.
+// Quill's default image button embeds uploads as base64, which Gmail and most
+// inboxes strip from delivered emails. Instead, upload the file to our own
+// server (which compresses it) and insert the resulting hosted URL, sized so
+// it doesn't render at full native pixel width in the recipient's inbox.
+const MAX_EMAIL_IMAGE_WIDTH = 600;
+
 quill.getModule('toolbar').addHandler('image', () => {
-  const url = prompt('Paste the image URL (must be publicly hosted, e.g. https://...):');
-  if (!url) return;
-  const range = quill.getSelection(true);
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch('/api/uploads/image', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      insertSizedImage(window.location.origin + data.url);
+    } catch (err) {
+      alert('Image upload failed: ' + err.message);
+    }
+  };
+  input.click();
+});
+
+function insertSizedImage(url) {
+  const probe = new Image();
+  probe.onload = () => {
+    const width = Math.min(probe.naturalWidth, MAX_EMAIL_IMAGE_WIDTH);
+    placeImage(url, width);
+  };
+  probe.onerror = () => placeImage(url, MAX_EMAIL_IMAGE_WIDTH);
+  probe.src = url;
+}
+
+function placeImage(url, width) {
+  const range = quill.getSelection(true) || { index: quill.getLength() };
   quill.insertEmbed(range.index, 'image', url, 'user');
   quill.setSelection(range.index + 1);
-});
+  requestAnimationFrame(() => {
+    quill.root.querySelectorAll(`img[src="${url}"]`).forEach((el) => {
+      el.setAttribute('width', width);
+      el.style.height = 'auto';
+      el.style.maxWidth = '100%';
+    });
+  });
+}
 
 // ---------- Visual / HTML source mode toggle ----------
 const htmlSourceBox = document.getElementById('html-source');

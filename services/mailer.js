@@ -54,6 +54,17 @@ function personalize(html, recipient) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Any <img> with no width/style at all renders at its native pixel size,
+// which can look huge in an inbox. Only touches images with no sizing
+// control of their own, so intentionally-sized images (e.g. pasted from a
+// real promotional template) are left untouched.
+function constrainUnsizedImages(html) {
+  return html.replace(/<img\b([^>]*)>/gi, (full, attrs) => {
+    if (/\b(style|width)\s*=/i.test(attrs)) return full;
+    return `<img${attrs} style="max-width:600px;height:auto;">`;
+  });
+}
+
 // Wraps a bare HTML fragment (e.g. pasted from the HTML Source editor) in a
 // full document with a charset, since malformed/incomplete HTML is itself a
 // spam signal to most inbox providers.
@@ -109,7 +120,7 @@ async function runCampaign(campaignId) {
     const data = recipient.data ? JSON.parse(recipient.data) : {};
     const recipientForTemplate = { name: recipient.name, email: recipient.email, data };
     const rawHtml = personalize(template.html_body, recipientForTemplate);
-    const html = ensureFullHtmlDocument(rawHtml);
+    const html = ensureFullHtmlDocument(constrainUnsizedImages(rawHtml));
     const text = htmlToPlainText(rawHtml);
     const subject = personalize(campaign.subject, recipientForTemplate);
 
