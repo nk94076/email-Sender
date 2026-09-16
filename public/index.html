@@ -108,11 +108,20 @@
             <label>Subject Line</label>
             <input type="text" id="template-subject" placeholder="e.g. Hi {{name}}, check this out!" />
 
-            <label>Email Body</label>
+            <div class="body-label-row">
+              <label style="margin:0">Email Body</label>
+              <div class="mode-toggle">
+                <button type="button" id="mode-visual-btn" class="mode-btn active">Visual Editor</button>
+                <button type="button" id="mode-html-btn" class="mode-btn">HTML Source</button>
+              </div>
+            </div>
             <div id="editor"></div>
+            <textarea id="html-source" class="html-source-box" style="display:none" placeholder="Paste a complete HTML email template here (tables, inline styles, hosted image URLs, etc.)"></textarea>
 
             <div class="hint-box">
-              Use <code>{{name}}</code>, <code>{{email}}</code> or any custom CSV column as <code>{{column}}</code> for personalization. You can also embed images, videos, and links using the toolbar above.
+              Use <code>{{name}}</code>, <code>{{email}}</code> or any custom CSV column as <code>{{column}}</code> for personalization.
+              <br />Images must be a <strong>hosted URL</strong> (not an uploaded file) — Gmail and most inboxes strip embedded/base64 images.
+              <br />Have a ready-made promotional HTML template? Switch to <strong>HTML Source</strong> above and paste it directly.
             </div>
 
             <div class="actions">

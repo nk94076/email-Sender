@@ -28,6 +28,50 @@ const quill = new Quill('#editor', {
   },
 });
 
+// Quill's default image button opens a file picker and embeds the image as
+// base64, which Gmail and most inboxes strip from delivered emails. Force a
+// hosted-URL prompt instead so images actually survive sending.
+quill.getModule('toolbar').addHandler('image', () => {
+  const url = prompt('Paste the image URL (must be publicly hosted, e.g. https://...):');
+  if (!url) return;
+  const range = quill.getSelection(true);
+  quill.insertEmbed(range.index, 'image', url, 'user');
+  quill.setSelection(range.index + 1);
+});
+
+// ---------- Visual / HTML source mode toggle ----------
+const htmlSourceBox = document.getElementById('html-source');
+const modeVisualBtn = document.getElementById('mode-visual-btn');
+const modeHtmlBtn = document.getElementById('mode-html-btn');
+let editorMode = 'visual';
+
+function setEditorMode(mode) {
+  if (mode === editorMode) return;
+  if (mode === 'html') {
+    htmlSourceBox.value = quill.root.innerHTML;
+    quill.root.parentElement.style.display = 'none';
+    htmlSourceBox.style.display = 'block';
+  } else {
+    quill.root.innerHTML = htmlSourceBox.value;
+    htmlSourceBox.style.display = 'none';
+    quill.root.parentElement.style.display = '';
+  }
+  editorMode = mode;
+  modeVisualBtn.classList.toggle('active', mode === 'visual');
+  modeHtmlBtn.classList.toggle('active', mode === 'html');
+}
+
+modeVisualBtn.addEventListener('click', () => setEditorMode('visual'));
+modeHtmlBtn.addEventListener('click', () => setEditorMode('html'));
+
+function getEditorHtml() {
+  return editorMode === 'html' ? htmlSourceBox.value : quill.root.innerHTML;
+}
+
+function getEditorText() {
+  return editorMode === 'html' ? htmlSourceBox.value.replace(/<[^>]*>/g, '').trim() : quill.getText().trim();
+}
+
 async function api(path, options = {}) {
   const res = await fetch(`/api${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -97,6 +141,7 @@ async function editTemplate(id) {
   document.getElementById('template-name').value = t.name;
   document.getElementById('template-subject').value = t.subject;
   document.getElementById('template-category').value = t.category || 'General';
+  setEditorMode('visual');
   quill.root.innerHTML = t.html_body;
 }
 
@@ -106,7 +151,9 @@ document.getElementById('clear-template-btn').addEventListener('click', () => {
   document.getElementById('template-name').value = '';
   document.getElementById('template-subject').value = '';
   document.getElementById('template-category').value = 'General';
+  setEditorMode('visual');
   quill.root.innerHTML = '';
+  htmlSourceBox.value = '';
 });
 
 document.getElementById('save-template-btn').addEventListener('click', async () => {
@@ -114,9 +161,9 @@ document.getElementById('save-template-btn').addEventListener('click', async () 
   const name = document.getElementById('template-name').value.trim();
   const subject = document.getElementById('template-subject').value.trim();
   const category = document.getElementById('template-category').value;
-  const html_body = quill.root.innerHTML;
+  const html_body = getEditorHtml();
 
-  if (!name || !subject || quill.getText().trim().length === 0) {
+  if (!name || !subject || getEditorText().length === 0) {
     alert('Please fill in name, subject and body.');
     return;
   }
