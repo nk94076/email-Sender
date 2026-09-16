@@ -276,22 +276,59 @@ document.getElementById('upload-btn').addEventListener('click', async () => {
   }
 });
 
+document.getElementById('manual-add-btn').addEventListener('click', async () => {
+  const listName = document.getElementById('manual-list-name').value.trim();
+  const text = document.getElementById('manual-emails').value;
+  const resultEl = document.getElementById('manual-result');
+
+  if (!listName || !text.trim()) {
+    alert('Please provide a list name and at least one email address.');
+    return;
+  }
+
+  try {
+    const data = await api(`/recipients/lists/${encodeURIComponent(listName)}/manual`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
+    resultEl.textContent = `Added ${data.imported} recipients to "${data.listName}".`;
+    document.getElementById('manual-emails').value = '';
+    loadLists();
+  } catch (err) {
+    resultEl.textContent = `Error: ${err.message}`;
+  }
+});
+
 // ---------- Campaigns ----------
 async function loadCampaignOptions() {
-  const [templates, lists] = await Promise.all([api('/templates'), api('/recipients/lists')]);
+  const [templates, lists, profiles] = await Promise.all([
+    api('/templates'),
+    api('/recipients/lists'),
+    api('/smtp-profiles'),
+  ]);
   const templateSel = document.getElementById('campaign-template');
   const listSel = document.getElementById('campaign-list');
+  const profileSel = document.getElementById('campaign-smtp-profile');
   templateSel.innerHTML = templates
     .map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`)
     .join('');
   listSel.innerHTML = lists
     .map((l) => `<option value="${l.id}">${escapeHtml(l.name)} (${l.recipient_count})</option>`)
     .join('');
+  profileSel.innerHTML = profiles.length
+    ? profiles
+        .map(
+          (p) =>
+            `<option value="${p.id}" ${p.isDefault ? 'selected' : ''}>${escapeHtml(p.name)}${p.isDefault ? ' (default)' : ''}</option>`
+        )
+        .join('')
+    : '<option value="">No SMTP account configured — add one in SMTP Settings</option>';
 }
 
 document.getElementById('send-campaign-btn').addEventListener('click', async () => {
   const template_id = document.getElementById('campaign-template').value;
   const list_id = document.getElementById('campaign-list').value;
+  const smtp_profile_id = document.getElementById('campaign-smtp-profile').value;
   const subject = document.getElementById('campaign-subject').value.trim();
   const includeUnsubscribeHeader = document.getElementById('campaign-unsubscribe').checked;
   const resultEl = document.getElementById('campaign-result');
@@ -300,11 +337,21 @@ document.getElementById('send-campaign-btn').addEventListener('click', async () 
     alert('Please create a template and a recipient list first.');
     return;
   }
+  if (!smtp_profile_id) {
+    alert('Please add an SMTP account in SMTP Settings first.');
+    return;
+  }
 
   try {
     const data = await api('/campaigns', {
       method: 'POST',
-      body: JSON.stringify({ template_id, list_id, subject: subject || undefined, includeUnsubscribeHeader }),
+      body: JSON.stringify({
+        template_id,
+        list_id,
+        subject: subject || undefined,
+        includeUnsubscribeHeader,
+        smtp_profile_id,
+      }),
     });
     resultEl.textContent = `Campaign #${data.id} started. Sending in progress...`;
     loadCampaigns();
@@ -414,35 +461,108 @@ async function loadLogs() {
   });
 }
 
-// ---------- Settings ----------
+// ---------- SMTP Accounts ----------
+let smtpProfiles = [];
+
 async function loadSettings() {
-  const s = await api('/settings');
-  document.getElementById('smtp-host').value = s.host || '';
-  document.getElementById('smtp-port').value = s.port || 587;
-  document.getElementById('smtp-secure').checked = !!s.secure;
-  document.getElementById('smtp-user').value = s.user || '';
-  document.getElementById('smtp-pass').value = s.pass || '';
-  document.getElementById('smtp-from-name').value = s.fromName || '';
-  document.getElementById('smtp-from-email').value = s.fromEmail || '';
-  document.getElementById('smtp-delay').value = s.sendDelayMs || 1000;
-  document.getElementById('smtp-public-url').value = s.publicBaseUrl || '';
-  updateUserBadge(s);
+  await loadSmtpProfiles();
+  const app = await api('/settings');
+  document.getElementById('app-public-url').value = app.publicBaseUrl || '';
 }
 
-function updateUserBadge(s) {
+async function loadSmtpProfiles() {
+  smtpProfiles = await api('/smtp-profiles');
+  const list = document.getElementById('smtp-profile-list');
+  list.innerHTML = smtpProfiles.length ? '' : '<p class="muted">No SMTP accounts yet — add one on the left.</p>';
+  smtpProfiles.forEach((p) => {
+    const el = document.createElement('div');
+    el.className = 'list-item';
+    el.innerHTML = `
+      <div class="list-item-main">
+        <div class="item-icon icon-purple">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+        </div>
+        <div>
+          <div class="item-title">${escapeHtml(p.name)} ${p.isDefault ? '<span class="badge badge-General">Default</span>' : ''}</div>
+          <div class="item-sub">${escapeHtml(p.fromEmail)}</div>
+        </div>
+      </div>
+      <div class="row-actions">
+        ${p.isDefault ? '' : `<button data-set-default="${p.id}">Set Default</button>`}
+        <button data-edit-smtp="${p.id}">Edit</button>
+        <button data-delete-smtp="${p.id}" class="danger">Delete</button>
+      </div>`;
+    list.appendChild(el);
+  });
+
+  list.querySelectorAll('[data-edit-smtp]').forEach((b) =>
+    b.addEventListener('click', () => editSmtpProfile(Number(b.dataset.editSmtp)))
+  );
+  list.querySelectorAll('[data-delete-smtp]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirm('Delete this SMTP account?')) return;
+      await api(`/smtp-profiles/${b.dataset.deleteSmtp}`, { method: 'DELETE' });
+      loadSmtpProfiles();
+    })
+  );
+  list.querySelectorAll('[data-set-default]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      await api(`/smtp-profiles/${b.dataset.setDefault}/set-default`, { method: 'POST' });
+      loadSmtpProfiles();
+    })
+  );
+
+  const defaultProfile = smtpProfiles.find((p) => p.isDefault);
+  if (defaultProfile) updateUserBadge(defaultProfile);
+}
+
+function editSmtpProfile(id) {
+  const p = smtpProfiles.find((x) => x.id === id);
+  if (!p) return;
+  document.getElementById('smtp-id').value = p.id;
+  document.getElementById('smtp-form-title').textContent = `Edit: ${p.name}`;
+  document.getElementById('smtp-name').value = p.name;
+  document.getElementById('smtp-host').value = p.host;
+  document.getElementById('smtp-port').value = p.port;
+  document.getElementById('smtp-secure').checked = !!p.secure;
+  document.getElementById('smtp-user').value = p.user;
+  document.getElementById('smtp-pass').value = '••••••••';
+  document.getElementById('smtp-from-name').value = p.fromName || '';
+  document.getElementById('smtp-from-email').value = p.fromEmail;
+  document.getElementById('smtp-delay').value = p.sendDelayMs;
+}
+
+document.getElementById('smtp-clear-btn').addEventListener('click', () => {
+  document.getElementById('smtp-id').value = '';
+  document.getElementById('smtp-form-title').textContent = 'Add SMTP Account';
+  document.getElementById('smtp-name').value = '';
+  document.getElementById('smtp-host').value = '';
+  document.getElementById('smtp-port').value = '';
+  document.getElementById('smtp-secure').checked = false;
+  document.getElementById('smtp-user').value = '';
+  document.getElementById('smtp-pass').value = '';
+  document.getElementById('smtp-from-name').value = '';
+  document.getElementById('smtp-from-email').value = '';
+  document.getElementById('smtp-delay').value = '';
+  document.getElementById('smtp-form-result').textContent = '';
+});
+
+function updateUserBadge(p) {
   const nameEl = document.getElementById('user-name');
   const emailEl = document.getElementById('user-email');
   const avatarEl = document.getElementById('user-avatar');
-  if (s.fromEmail) {
-    nameEl.textContent = s.fromName || s.fromEmail;
-    emailEl.textContent = s.fromEmail;
-    avatarEl.textContent = (s.fromName || s.fromEmail).charAt(0).toUpperCase();
+  if (p && p.fromEmail) {
+    nameEl.textContent = p.fromName || p.fromEmail;
+    emailEl.textContent = p.fromEmail;
+    avatarEl.textContent = (p.fromName || p.fromEmail).charAt(0).toUpperCase();
   }
 }
 
-document.getElementById('save-settings-btn').addEventListener('click', async () => {
-  const resultEl = document.getElementById('settings-result');
+document.getElementById('smtp-save-btn').addEventListener('click', async () => {
+  const id = document.getElementById('smtp-id').value;
+  const resultEl = document.getElementById('smtp-form-result');
   const payload = {
+    name: document.getElementById('smtp-name').value.trim(),
     host: document.getElementById('smtp-host').value.trim(),
     port: document.getElementById('smtp-port').value,
     secure: document.getElementById('smtp-secure').checked,
@@ -451,25 +571,62 @@ document.getElementById('save-settings-btn').addEventListener('click', async () 
     fromName: document.getElementById('smtp-from-name').value.trim(),
     fromEmail: document.getElementById('smtp-from-email').value.trim(),
     sendDelayMs: document.getElementById('smtp-delay').value,
-    publicBaseUrl: document.getElementById('smtp-public-url').value.trim(),
   };
+  if (!payload.name || !payload.host || !payload.user || !payload.fromEmail || (!id && !payload.pass)) {
+    resultEl.textContent = 'Please fill in name, host, username, password and from email.';
+    return;
+  }
   try {
-    await api('/settings', { method: 'POST', body: JSON.stringify(payload) });
-    resultEl.textContent = 'Settings saved.';
-    updateUserBadge(payload);
+    if (id) {
+      await api(`/smtp-profiles/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+    } else {
+      await api('/smtp-profiles', { method: 'POST', body: JSON.stringify(payload) });
+    }
+    resultEl.textContent = 'Account saved.';
+    document.getElementById('smtp-clear-btn').click();
+    loadSmtpProfiles();
+    loadCampaignOptions();
   } catch (err) {
     resultEl.textContent = `Error: ${err.message}`;
   }
 });
 
-document.getElementById('test-settings-btn').addEventListener('click', async () => {
-  const resultEl = document.getElementById('settings-result');
+document.getElementById('smtp-test-btn').addEventListener('click', async () => {
+  const resultEl = document.getElementById('smtp-form-result');
+  const id = document.getElementById('smtp-id').value;
+  const pass = document.getElementById('smtp-pass').value;
   resultEl.textContent = 'Testing connection...';
   try {
-    await api('/settings/test', { method: 'POST' });
+    if (id && pass === '••••••••') {
+      await api(`/smtp-profiles/${id}/test`, { method: 'POST' });
+    } else {
+      await api('/smtp-profiles/test', {
+        method: 'POST',
+        body: JSON.stringify({
+          host: document.getElementById('smtp-host').value.trim(),
+          port: document.getElementById('smtp-port').value,
+          secure: document.getElementById('smtp-secure').checked,
+          user: document.getElementById('smtp-user').value.trim(),
+          pass,
+        }),
+      });
+    }
     resultEl.textContent = 'Connection successful!';
   } catch (err) {
     resultEl.textContent = `Connection failed: ${err.message}`;
+  }
+});
+
+document.getElementById('app-settings-save-btn').addEventListener('click', async () => {
+  const resultEl = document.getElementById('app-settings-result');
+  try {
+    await api('/settings', {
+      method: 'POST',
+      body: JSON.stringify({ publicBaseUrl: document.getElementById('app-public-url').value.trim() }),
+    });
+    resultEl.textContent = 'Saved.';
+  } catch (err) {
+    resultEl.textContent = `Error: ${err.message}`;
   }
 });
 

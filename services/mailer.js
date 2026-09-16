@@ -2,48 +2,75 @@ const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const db = require('../db/db');
 
-function getSettings() {
-  const row = db.prepare('SELECT * FROM smtp_settings WHERE id = 1').get();
-  if (row) {
-    return {
-      host: row.host || process.env.SMTP_HOST,
-      port: row.port || Number(process.env.SMTP_PORT || 587),
-      secure: !!row.secure,
-      user: row.user || process.env.SMTP_USER,
-      pass: row.pass || process.env.SMTP_PASS,
-      fromName: row.from_name || process.env.FROM_NAME || '',
-      fromEmail: row.from_email || process.env.FROM_EMAIL || row.user,
-      sendDelayMs: row.send_delay_ms ?? Number(process.env.SEND_DELAY_MS || 1000),
-      publicBaseUrl: (row.public_base_url || process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, ''),
-    };
-  }
+function rowToProfile(row) {
+  if (!row) return null;
   return {
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: process.env.SMTP_SECURE === 'true',
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-    fromName: process.env.FROM_NAME || '',
-    fromEmail: process.env.FROM_EMAIL || process.env.SMTP_USER,
-    sendDelayMs: Number(process.env.SEND_DELAY_MS || 1000),
-    publicBaseUrl: (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, ''),
+    id: row.id,
+    name: row.name,
+    host: row.host,
+    port: row.port,
+    secure: !!row.secure,
+    user: row.user,
+    pass: row.pass,
+    fromName: row.from_name || '',
+    fromEmail: row.from_email || row.user,
+    sendDelayMs: row.send_delay_ms ?? 1000,
   };
 }
 
-function createTransporter(settings) {
+function getProfile(id) {
+  return rowToProfile(db.prepare('SELECT * FROM smtp_profiles WHERE id = ?').get(id));
+}
+
+function listProfiles() {
+  return db.prepare('SELECT * FROM smtp_profiles ORDER BY created_at ASC').all().map(rowToProfile);
+}
+
+function getAppSettings() {
+  const row = db.prepare('SELECT * FROM app_settings WHERE id = 1').get() || {};
+  return {
+    publicBaseUrl: (row.public_base_url || process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, ''),
+    defaultSmtpProfileId: row.default_smtp_profile_id || null,
+  };
+}
+
+// Resolves which profile a campaign should send through: an explicit choice
+// made at campaign-creation time, else the app-wide default, else whichever
+// profile was created first (so a single-account setup keeps working with
+// zero configuration).
+function resolveProfile(explicitId) {
+  if (explicitId) {
+    const p = getProfile(explicitId);
+    if (p) return p;
+  }
+  const app = getAppSettings();
+  if (app.defaultSmtpProfileId) {
+    const p = getProfile(app.defaultSmtpProfileId);
+    if (p) return p;
+  }
+  const first = db.prepare('SELECT id FROM smtp_profiles ORDER BY created_at ASC LIMIT 1').get();
+  return first ? getProfile(first.id) : null;
+}
+
+function createTransporter(profile) {
   return nodemailer.createTransport({
-    host: settings.host,
-    port: settings.port,
-    secure: settings.secure,
-    auth: { user: settings.user, pass: settings.pass },
+    host: profile.host,
+    port: profile.port,
+    secure: profile.secure,
+    auth: { user: profile.user, pass: profile.pass },
   });
 }
 
-async function verifyConnection() {
-  const settings = getSettings();
-  const transporter = createTransporter(settings);
+async function verifyConnectionWithCreds(creds) {
+  const transporter = createTransporter(creds);
   await transporter.verify();
   return true;
+}
+
+async function verifyConnection(profileId) {
+  const profile = resolveProfile(profileId);
+  if (!profile) throw new Error('No SMTP account configured yet');
+  return verifyConnectionWithCreds(profile);
 }
 
 // Replaces {{field}} placeholders with values from the recipient's data,
@@ -113,10 +140,16 @@ async function runCampaign(campaignId) {
 
   const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(campaign.template_id);
   const recipients = db.prepare('SELECT * FROM recipients WHERE list_id = ?').all(campaign.list_id);
+  const profile = resolveProfile(campaign.smtp_profile_id);
 
-  const settings = getSettings();
-  const transporter = createTransporter(settings);
-  const from = settings.fromName ? `"${settings.fromName}" <${settings.fromEmail}>` : settings.fromEmail;
+  if (!profile) {
+    db.prepare("UPDATE campaigns SET status = 'failed', finished_at = datetime('now') WHERE id = ?").run(campaignId);
+    throw new Error('No SMTP account configured — add one in SMTP Settings first');
+  }
+
+  const { publicBaseUrl } = getAppSettings();
+  const transporter = createTransporter(profile);
+  const from = profile.fromName ? `"${profile.fromName}" <${profile.fromEmail}>` : profile.fromEmail;
 
   db.prepare("UPDATE campaigns SET status = 'sending', started_at = datetime('now'), total = ? WHERE id = ?")
     .run(recipients.length, campaignId);
@@ -135,14 +168,14 @@ async function runCampaign(campaignId) {
     const text = htmlToPlainText(rawHtml);
     const subject = personalize(campaign.subject, recipientForTemplate);
 
-    const openToken = settings.publicBaseUrl ? crypto.randomBytes(16).toString('hex') : null;
+    const openToken = publicBaseUrl ? crypto.randomBytes(16).toString('hex') : null;
     if (openToken) {
-      html = injectTrackingPixel(html, `${settings.publicBaseUrl}/t/o/${openToken}.gif`);
+      html = injectTrackingPixel(html, `${publicBaseUrl}/t/o/${openToken}.gif`);
     }
 
     const headers = {};
     if (campaign.include_unsubscribe_header) {
-      headers['List-Unsubscribe'] = `<mailto:${settings.fromEmail}?subject=unsubscribe>`;
+      headers['List-Unsubscribe'] = `<mailto:${profile.fromEmail}?subject=unsubscribe>`;
     }
 
     try {
@@ -154,8 +187,8 @@ async function runCampaign(campaignId) {
       bumpFailed.run(campaignId);
     }
 
-    if (settings.sendDelayMs > 0) {
-      await sleep(settings.sendDelayMs);
+    if (profile.sendDelayMs > 0) {
+      await sleep(profile.sendDelayMs);
     }
   }
 
@@ -164,4 +197,13 @@ async function runCampaign(campaignId) {
   );
 }
 
-module.exports = { getSettings, verifyConnection, runCampaign, personalize };
+module.exports = {
+  listProfiles,
+  getProfile,
+  getAppSettings,
+  resolveProfile,
+  verifyConnection,
+  verifyConnectionWithCreds,
+  runCampaign,
+  personalize,
+};

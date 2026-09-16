@@ -45,10 +45,31 @@ CREATE TABLE IF NOT EXISTS smtp_settings (
   public_base_url TEXT
 );
 
+CREATE TABLE IF NOT EXISTS smtp_profiles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  host TEXT NOT NULL,
+  port INTEGER NOT NULL DEFAULT 587,
+  secure INTEGER NOT NULL DEFAULT 0,
+  user TEXT NOT NULL,
+  pass TEXT NOT NULL,
+  from_name TEXT,
+  from_email TEXT NOT NULL,
+  send_delay_ms INTEGER NOT NULL DEFAULT 1000,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  public_base_url TEXT,
+  default_smtp_profile_id INTEGER REFERENCES smtp_profiles(id) ON DELETE SET NULL
+);
+
 CREATE TABLE IF NOT EXISTS campaigns (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   template_id INTEGER NOT NULL REFERENCES templates(id),
   list_id INTEGER NOT NULL REFERENCES recipient_lists(id),
+  smtp_profile_id INTEGER REFERENCES smtp_profiles(id) ON DELETE SET NULL,
   subject TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
   total INTEGER NOT NULL DEFAULT 0,
@@ -94,5 +115,40 @@ const settingsColumns = db.prepare('PRAGMA table_info(smtp_settings)').all().map
 if (!settingsColumns.includes('public_base_url')) {
   db.exec('ALTER TABLE smtp_settings ADD COLUMN public_base_url TEXT');
 }
+
+const campaignColumns2 = db.prepare('PRAGMA table_info(campaigns)').all().map((c) => c.name);
+if (!campaignColumns2.includes('smtp_profile_id')) {
+  db.exec('ALTER TABLE campaigns ADD COLUMN smtp_profile_id INTEGER REFERENCES smtp_profiles(id) ON DELETE SET NULL');
+}
+
+// One-time migration: move the old single-row SMTP config into the new
+// multi-profile table, so existing installs keep working without the user
+// having to re-enter their credentials.
+const profileCount = db.prepare('SELECT COUNT(*) AS c FROM smtp_profiles').get().c;
+if (profileCount === 0) {
+  const legacy = db.prepare('SELECT * FROM smtp_settings WHERE id = 1').get();
+  if (legacy && legacy.host && legacy.user) {
+    const result = db
+      .prepare(
+        `INSERT INTO smtp_profiles (name, host, port, secure, user, pass, from_name, from_email, send_delay_ms)
+         VALUES ('Default', ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        legacy.host,
+        legacy.port || 587,
+        legacy.secure || 0,
+        legacy.user,
+        legacy.pass,
+        legacy.from_name,
+        legacy.from_email || legacy.user,
+        legacy.send_delay_ms || 1000
+      );
+    db.prepare(
+      `INSERT INTO app_settings (id, public_base_url, default_smtp_profile_id) VALUES (1, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET public_base_url = excluded.public_base_url, default_smtp_profile_id = excluded.default_smtp_profile_id`
+    ).run(legacy.public_base_url || null, result.lastInsertRowid);
+  }
+}
+db.prepare('INSERT OR IGNORE INTO app_settings (id) VALUES (1)').run();
 
 module.exports = db;

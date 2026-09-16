@@ -177,6 +177,28 @@
 
           <div class="card">
             <div class="card-head">
+              <div class="card-icon icon-orange">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              </div>
+              <div>
+                <h2>Type Emails Manually</h2>
+                <p class="muted">Got just a handful of addresses? Type or paste them directly — no CSV needed.</p>
+              </div>
+            </div>
+            <label>List name</label>
+            <input type="text" id="manual-list-name" placeholder="e.g. quick-send" />
+            <label>Email addresses</label>
+            <textarea id="manual-emails" class="html-source-box" style="height:120px" placeholder="a@example.com, b@example.com
+or one per line
+c@example.com"></textarea>
+            <div class="actions">
+              <button id="manual-add-btn" class="btn-primary">Add</button>
+            </div>
+            <p id="manual-result" class="muted"></p>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
               <div class="card-icon icon-green">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
               </div>
@@ -214,6 +236,8 @@
             <select id="campaign-template"></select>
             <label>Recipient List</label>
             <select id="campaign-list"></select>
+            <label>Send via (SMTP account)</label>
+            <select id="campaign-smtp-profile"></select>
             <label>Subject override (optional)</label>
             <input type="text" id="campaign-subject" placeholder="Leave blank to use template subject" />
             <label class="checkbox-label">
@@ -295,36 +319,80 @@
         <div class="page-head">
           <div>
             <h1>SMTP Settings</h1>
-            <p>Configure the mail server used to send your campaigns.</p>
+            <p>Add one or more sending accounts, and pick which one each campaign uses.</p>
           </div>
         </div>
 
-        <div class="card narrow">
-          <label>Host</label>
-          <input type="text" id="smtp-host" placeholder="smtp.gmail.com" />
-          <label>Port</label>
-          <input type="number" id="smtp-port" placeholder="587" />
-          <label class="checkbox-label"><input type="checkbox" id="smtp-secure" /> Use SSL (port 465)</label>
-          <label>Username</label>
-          <input type="text" id="smtp-user" placeholder="you@gmail.com" />
-          <label>Password / App Password</label>
-          <input type="password" id="smtp-pass" placeholder="••••••••" />
-          <label>From Name</label>
-          <input type="text" id="smtp-from-name" placeholder="Your Name" />
-          <label>From Email</label>
-          <input type="text" id="smtp-from-email" placeholder="you@gmail.com" />
-          <label>Delay between emails (ms)</label>
-          <input type="number" id="smtp-delay" placeholder="1000" />
-          <label>Public URL (for open tracking)</label>
-          <input type="text" id="smtp-public-url" placeholder="https://mailer.adstrackio.com" />
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-head">
+              <div class="card-icon icon-purple">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+              </div>
+              <div>
+                <h2 id="smtp-form-title">Add SMTP Account</h2>
+                <p class="muted">Credentials for one sending account (e.g. one Gmail address).</p>
+              </div>
+            </div>
+            <input type="hidden" id="smtp-id" />
+            <label>Account name</label>
+            <input type="text" id="smtp-name" placeholder="e.g. Naveen Gmail" />
+            <label>Host</label>
+            <input type="text" id="smtp-host" placeholder="smtp.gmail.com" />
+            <label>Port</label>
+            <input type="number" id="smtp-port" placeholder="587" />
+            <label class="checkbox-label"><input type="checkbox" id="smtp-secure" /> Use SSL (port 465)</label>
+            <label>Username</label>
+            <input type="text" id="smtp-user" placeholder="you@gmail.com" />
+            <label>Password / App Password</label>
+            <input type="password" id="smtp-pass" placeholder="••••••••" />
+            <label>From Name</label>
+            <input type="text" id="smtp-from-name" placeholder="Your Name" />
+            <label>From Email</label>
+            <input type="text" id="smtp-from-email" placeholder="you@gmail.com" />
+            <label>Delay between emails (ms)</label>
+            <input type="number" id="smtp-delay" placeholder="1000" />
+            <div class="actions">
+              <button id="smtp-clear-btn" class="btn-ghost">Clear</button>
+              <button id="smtp-test-btn" class="btn-ghost">Test Connection</button>
+              <button id="smtp-save-btn" class="btn-primary">Save Account</button>
+            </div>
+            <p id="smtp-form-result" class="muted"></p>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div class="card-icon icon-blue">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+              </div>
+              <div>
+                <h2>Saved Accounts</h2>
+                <p class="muted">The default account is used when a campaign doesn't pick one.</p>
+              </div>
+            </div>
+            <div id="smtp-profile-list" class="stack"></div>
+          </div>
+        </div>
+
+        <div class="card narrow" style="margin-top:20px">
+          <div class="card-head">
+            <div class="card-icon icon-green">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            </div>
+            <div>
+              <h2>Open Tracking</h2>
+              <p class="muted">Applies to all accounts.</p>
+            </div>
+          </div>
+          <label>Public URL</label>
+          <input type="text" id="app-public-url" placeholder="https://mailer.adstrackio.com" />
           <p class="hint-box" style="margin-top:8px">
             Set this to your app's live URL to enable open tracking (a hidden pixel records when a recipient's inbox loads the email). Leave blank to disable tracking.
           </p>
           <div class="actions">
-            <button id="test-settings-btn" class="btn-ghost">Test Connection</button>
-            <button id="save-settings-btn" class="btn-primary">Save</button>
+            <button id="app-settings-save-btn" class="btn-primary">Save</button>
           </div>
-          <p id="settings-result" class="muted"></p>
+          <p id="app-settings-result" class="muted"></p>
         </div>
       </section>
 

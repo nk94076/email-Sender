@@ -66,4 +66,35 @@ router.post('/lists/:listName/upload', upload.single('file'), (req, res) => {
   res.status(201).json({ listId: list.id, listName: list.name, imported: emailRows.length });
 });
 
+const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+
+// Quick-add a handful of recipients by typing/pasting emails directly
+// (comma, space, or newline separated) — no CSV needed.
+router.post('/lists/:listName/manual', (req, res) => {
+  const { text } = req.body;
+  if (!text || !text.trim()) {
+    return res.status(400).json({ error: 'text is required' });
+  }
+
+  const emails = [...new Set((text.match(EMAIL_PATTERN) || []).map((e) => e.toLowerCase()))];
+  if (emails.length === 0) {
+    return res.status(400).json({ error: 'No valid email addresses found in the text' });
+  }
+
+  const listName = req.params.listName;
+  let list = db.prepare('SELECT * FROM recipient_lists WHERE name = ?').get(listName);
+  if (!list) {
+    const result = db.prepare('INSERT INTO recipient_lists (name) VALUES (?)').run(listName);
+    list = { id: result.lastInsertRowid, name: listName };
+  }
+
+  const insert = db.prepare('INSERT INTO recipients (list_id, email, name, data) VALUES (?, ?, ?, ?)');
+  const insertMany = db.transaction((rows) => {
+    for (const email of rows) insert.run(list.id, email, '', '{}');
+  });
+  insertMany(emails);
+
+  res.status(201).json({ listId: list.id, listName: list.name, imported: emails.length });
+});
+
 module.exports = router;
