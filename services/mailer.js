@@ -124,15 +124,13 @@ async function runCampaign(campaignId) {
     const text = htmlToPlainText(rawHtml);
     const subject = personalize(campaign.subject, recipientForTemplate);
 
+    const headers = {};
+    if (campaign.include_unsubscribe_header) {
+      headers['List-Unsubscribe'] = `<mailto:${settings.fromEmail}?subject=unsubscribe>`;
+    }
+
     try {
-      await transporter.sendMail({
-        from,
-        to: recipient.email,
-        subject,
-        html,
-        text,
-        headers: { 'List-Unsubscribe': `<mailto:${settings.fromEmail}?subject=unsubscribe>` },
-      });
+      await transporter.sendMail({ from, to: recipient.email, subject, html, text, headers });
       insertLog.run(campaignId, recipient.email, 'sent', null);
       bumpSent.run(campaignId);
     } catch (err) {

@@ -216,6 +216,14 @@
             <select id="campaign-list"></select>
             <label>Subject override (optional)</label>
             <input type="text" id="campaign-subject" placeholder="Leave blank to use template subject" />
+            <label class="checkbox-label">
+              <input type="checkbox" id="campaign-unsubscribe" checked />
+              This is a bulk/marketing send (adds an unsubscribe header)
+            </label>
+            <p class="hint-box" style="margin-top:8px">
+              Leave checked for newsletters/promotions — safer from spam filters, but Gmail is more likely to route it to Promotions.
+              <br />Uncheck for personal-style outreach (e.g. a partnership/affiliate email to one person at a time) — behaves like a normal 1-to-1 email and is more likely to land in Primary.
+            </p>
             <div class="actions">
               <button id="send-campaign-btn" class="btn-primary">Send Campaign</button>
             </div>

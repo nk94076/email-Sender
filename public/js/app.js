@@ -293,6 +293,7 @@ document.getElementById('send-campaign-btn').addEventListener('click', async () 
   const template_id = document.getElementById('campaign-template').value;
   const list_id = document.getElementById('campaign-list').value;
   const subject = document.getElementById('campaign-subject').value.trim();
+  const includeUnsubscribeHeader = document.getElementById('campaign-unsubscribe').checked;
   const resultEl = document.getElementById('campaign-result');
 
   if (!template_id || !list_id) {
@@ -303,7 +304,7 @@ document.getElementById('send-campaign-btn').addEventListener('click', async () 
   try {
     const data = await api('/campaigns', {
       method: 'POST',
-      body: JSON.stringify({ template_id, list_id, subject: subject || undefined }),
+      body: JSON.stringify({ template_id, list_id, subject: subject || undefined, includeUnsubscribeHeader }),
     });
     resultEl.textContent = `Campaign #${data.id} started. Sending in progress...`;
     loadCampaigns();

@@ -20,7 +20,7 @@ router.get('/:id', (req, res) => {
 
 // Creates a campaign and starts sending it in the background.
 router.post('/', (req, res) => {
-  const { template_id, list_id, subject } = req.body;
+  const { template_id, list_id, subject, includeUnsubscribeHeader } = req.body;
   if (!template_id || !list_id) {
     return res.status(400).json({ error: 'template_id and list_id are required' });
   }
@@ -36,8 +36,10 @@ router.post('/', (req, res) => {
   }
 
   const result = db
-    .prepare('INSERT INTO campaigns (template_id, list_id, subject, total) VALUES (?, ?, ?, ?)')
-    .run(template_id, list_id, subject || template.subject, recipientCount);
+    .prepare(
+      'INSERT INTO campaigns (template_id, list_id, subject, total, include_unsubscribe_header) VALUES (?, ?, ?, ?, ?)'
+    )
+    .run(template_id, list_id, subject || template.subject, recipientCount, includeUnsubscribeHeader === false ? 0 : 1);
 
   const campaignId = result.lastInsertRowid;
 

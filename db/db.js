@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
   total INTEGER NOT NULL DEFAULT 0,
   sent_count INTEGER NOT NULL DEFAULT 0,
   failed_count INTEGER NOT NULL DEFAULT 0,
+  include_unsubscribe_header INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   started_at TEXT,
   finished_at TEXT
@@ -71,6 +72,11 @@ CREATE TABLE IF NOT EXISTS campaign_logs (
 const templateColumns = db.prepare("PRAGMA table_info(templates)").all().map((c) => c.name);
 if (!templateColumns.includes('category')) {
   db.exec("ALTER TABLE templates ADD COLUMN category TEXT NOT NULL DEFAULT 'General'");
+}
+
+const campaignColumns = db.prepare("PRAGMA table_info(campaigns)").all().map((c) => c.name);
+if (!campaignColumns.includes('include_unsubscribe_header')) {
+  db.exec('ALTER TABLE campaigns ADD COLUMN include_unsubscribe_header INTEGER NOT NULL DEFAULT 1');
 }
 
 module.exports = db;
