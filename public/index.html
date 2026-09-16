@@ -282,7 +282,7 @@
         <div class="card wide">
           <table class="data-table">
             <thead>
-              <tr><th>Recipient</th><th>Campaign</th><th>Status</th><th>Detail</th><th>Time</th></tr>
+              <tr><th>Recipient</th><th>Campaign</th><th>Status</th><th>Opened</th><th>Detail</th><th>Time</th></tr>
             </thead>
             <tbody id="logs-body"></tbody>
           </table>
@@ -315,6 +315,11 @@
           <input type="text" id="smtp-from-email" placeholder="you@gmail.com" />
           <label>Delay between emails (ms)</label>
           <input type="number" id="smtp-delay" placeholder="1000" />
+          <label>Public URL (for open tracking)</label>
+          <input type="text" id="smtp-public-url" placeholder="https://mailer.adstrackio.com" />
+          <p class="hint-box" style="margin-top:8px">
+            Set this to your app's live URL to enable open tracking (a hidden pixel records when a recipient's inbox loads the email). Leave blank to disable tracking.
+          </p>
           <div class="actions">
             <button id="test-settings-btn" class="btn-ghost">Test Connection</button>
             <button id="save-settings-btn" class="btn-primary">Save</button>

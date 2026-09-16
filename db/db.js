@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS smtp_settings (
   pass TEXT,
   from_name TEXT,
   from_email TEXT,
-  send_delay_ms INTEGER DEFAULT 1000
+  send_delay_ms INTEGER DEFAULT 1000,
+  public_base_url TEXT
 );
 
 CREATE TABLE IF NOT EXISTS campaigns (
@@ -65,6 +66,9 @@ CREATE TABLE IF NOT EXISTS campaign_logs (
   recipient_email TEXT NOT NULL,
   status TEXT NOT NULL,
   error TEXT,
+  open_token TEXT,
+  opened_at TEXT,
+  open_count INTEGER NOT NULL DEFAULT 0,
   sent_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `);
@@ -77,6 +81,18 @@ if (!templateColumns.includes('category')) {
 const campaignColumns = db.prepare("PRAGMA table_info(campaigns)").all().map((c) => c.name);
 if (!campaignColumns.includes('include_unsubscribe_header')) {
   db.exec('ALTER TABLE campaigns ADD COLUMN include_unsubscribe_header INTEGER NOT NULL DEFAULT 1');
+}
+
+const logColumns = db.prepare('PRAGMA table_info(campaign_logs)').all().map((c) => c.name);
+if (!logColumns.includes('open_token')) {
+  db.exec('ALTER TABLE campaign_logs ADD COLUMN open_token TEXT');
+  db.exec('ALTER TABLE campaign_logs ADD COLUMN opened_at TEXT');
+  db.exec('ALTER TABLE campaign_logs ADD COLUMN open_count INTEGER NOT NULL DEFAULT 0');
+}
+
+const settingsColumns = db.prepare('PRAGMA table_info(smtp_settings)').all().map((c) => c.name);
+if (!settingsColumns.includes('public_base_url')) {
+  db.exec('ALTER TABLE smtp_settings ADD COLUMN public_base_url TEXT');
 }
 
 module.exports = db;

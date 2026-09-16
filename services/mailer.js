@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 const db = require('../db/db');
 
 function getSettings() {
@@ -13,6 +14,7 @@ function getSettings() {
       fromName: row.from_name || process.env.FROM_NAME || '',
       fromEmail: row.from_email || process.env.FROM_EMAIL || row.user,
       sendDelayMs: row.send_delay_ms ?? Number(process.env.SEND_DELAY_MS || 1000),
+      publicBaseUrl: (row.public_base_url || process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, ''),
     };
   }
   return {
@@ -24,6 +26,7 @@ function getSettings() {
     fromName: process.env.FROM_NAME || '',
     fromEmail: process.env.FROM_EMAIL || process.env.SMTP_USER,
     sendDelayMs: Number(process.env.SEND_DELAY_MS || 1000),
+    publicBaseUrl: (process.env.PUBLIC_BASE_URL || '').replace(/\/+$/, ''),
   };
 }
 
@@ -77,6 +80,14 @@ function ensureFullHtmlDocument(html) {
 </html>`;
 }
 
+// Appends a hidden 1x1 open-tracking pixel just before </body>. Falls back
+// to appending at the end if no closing tag is found.
+function injectTrackingPixel(html, pixelUrl) {
+  const tag = `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:none" border="0" />`;
+  if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, `${tag}</body>`);
+  return html + tag;
+}
+
 // Spam filters weight the presence of a plain-text alternative heavily —
 // HTML-only mail is treated as more suspicious. This is a best-effort strip,
 // not a full HTML-to-text renderer.
@@ -111,7 +122,7 @@ async function runCampaign(campaignId) {
     .run(recipients.length, campaignId);
 
   const insertLog = db.prepare(
-    'INSERT INTO campaign_logs (campaign_id, recipient_email, status, error) VALUES (?, ?, ?, ?)'
+    'INSERT INTO campaign_logs (campaign_id, recipient_email, status, error, open_token) VALUES (?, ?, ?, ?, ?)'
   );
   const bumpSent = db.prepare('UPDATE campaigns SET sent_count = sent_count + 1 WHERE id = ?');
   const bumpFailed = db.prepare('UPDATE campaigns SET failed_count = failed_count + 1 WHERE id = ?');
@@ -120,9 +131,14 @@ async function runCampaign(campaignId) {
     const data = recipient.data ? JSON.parse(recipient.data) : {};
     const recipientForTemplate = { name: recipient.name, email: recipient.email, data };
     const rawHtml = personalize(template.html_body, recipientForTemplate);
-    const html = ensureFullHtmlDocument(constrainUnsizedImages(rawHtml));
+    let html = ensureFullHtmlDocument(constrainUnsizedImages(rawHtml));
     const text = htmlToPlainText(rawHtml);
     const subject = personalize(campaign.subject, recipientForTemplate);
+
+    const openToken = settings.publicBaseUrl ? crypto.randomBytes(16).toString('hex') : null;
+    if (openToken) {
+      html = injectTrackingPixel(html, `${settings.publicBaseUrl}/t/o/${openToken}.gif`);
+    }
 
     const headers = {};
     if (campaign.include_unsubscribe_header) {
@@ -131,10 +147,10 @@ async function runCampaign(campaignId) {
 
     try {
       await transporter.sendMail({ from, to: recipient.email, subject, html, text, headers });
-      insertLog.run(campaignId, recipient.email, 'sent', null);
+      insertLog.run(campaignId, recipient.email, 'sent', null, openToken);
       bumpSent.run(campaignId);
     } catch (err) {
-      insertLog.run(campaignId, recipient.email, 'failed', String(err.message || err));
+      insertLog.run(campaignId, recipient.email, 'failed', String(err.message || err), openToken);
       bumpFailed.run(campaignId);
     }
 

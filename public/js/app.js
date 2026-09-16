@@ -346,6 +346,7 @@ async function loadAnalytics() {
   const stats = await api('/analytics');
   const grid = document.getElementById('stat-grid');
   const rate = stats.deliveryRate === null ? '—' : `${stats.deliveryRate}%`;
+  const openRate = stats.openRate === null ? '— (tracking off)' : `${stats.openRate}%`;
   grid.innerHTML = `
     <div class="stat-card">
       <div class="stat-label">Templates</div>
@@ -362,6 +363,14 @@ async function loadAnalytics() {
     <div class="stat-card">
       <div class="stat-label">Delivery Rate</div>
       <div class="stat-value">${rate}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Opened</div>
+      <div class="stat-value">${stats.totalOpened}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Open Rate</div>
+      <div class="stat-value">${openRate}</div>
     </div>`;
 
   const list = document.getElementById('analytics-campaigns');
@@ -376,7 +385,7 @@ async function loadAnalytics() {
         </div>
         <div>
           <div class="item-title">${escapeHtml(c.subject)}</div>
-          <div class="item-sub">${escapeHtml(c.template_name || '—')} → ${escapeHtml(c.list_name || '—')} · ${formatDate(c.created_at)}</div>
+          <div class="item-sub">${escapeHtml(c.template_name || '—')} → ${escapeHtml(c.list_name || '—')} · ${formatDate(c.created_at)} · Opened ${c.opened_count}/${c.sent_count}</div>
         </div>
       </div>
       <span class="status-badge status-${c.status}">${c.status}</span>`;
@@ -393,10 +402,12 @@ async function loadLogs() {
   empty.style.display = logs.length ? 'none' : 'block';
   logs.forEach((l) => {
     const tr = document.createElement('tr');
+    const openedLabel = l.opened_at ? `Yes · ${formatDate(l.opened_at)}` : '—';
     tr.innerHTML = `
       <td>${escapeHtml(l.recipient_email)}</td>
       <td>${escapeHtml(l.campaign_subject)}</td>
       <td><span class="status-badge status-${l.status}">${l.status}</span></td>
+      <td>${escapeHtml(openedLabel)}</td>
       <td>${escapeHtml(l.error || '—')}</td>
       <td>${formatDate(l.sent_at)}</td>`;
     body.appendChild(tr);
@@ -414,6 +425,7 @@ async function loadSettings() {
   document.getElementById('smtp-from-name').value = s.fromName || '';
   document.getElementById('smtp-from-email').value = s.fromEmail || '';
   document.getElementById('smtp-delay').value = s.sendDelayMs || 1000;
+  document.getElementById('smtp-public-url').value = s.publicBaseUrl || '';
   updateUserBadge(s);
 }
 
@@ -439,6 +451,7 @@ document.getElementById('save-settings-btn').addEventListener('click', async () 
     fromName: document.getElementById('smtp-from-name').value.trim(),
     fromEmail: document.getElementById('smtp-from-email').value.trim(),
     sendDelayMs: document.getElementById('smtp-delay').value,
+    publicBaseUrl: document.getElementById('smtp-public-url').value.trim(),
   };
   try {
     await api('/settings', { method: 'POST', body: JSON.stringify(payload) });

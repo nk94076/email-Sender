@@ -11,6 +11,7 @@ const settingsRouter = require('./routes/settings');
 const analyticsRouter = require('./routes/analytics');
 const logsRouter = require('./routes/logs');
 const uploadsRouter = require('./routes/uploads');
+const trackRouter = require('./routes/track');
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
@@ -23,6 +24,7 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/logs', logsRouter);
 app.use('/api/uploads', uploadsRouter);
+app.use('/t', trackRouter);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 

@@ -10,19 +10,30 @@ router.get('/', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { host, port, secure, user, pass, fromName, fromEmail, sendDelayMs } = req.body;
+  const { host, port, secure, user, pass, fromName, fromEmail, sendDelayMs, publicBaseUrl } = req.body;
 
   const existing = db.prepare('SELECT * FROM smtp_settings WHERE id = 1').get();
   const finalPass = pass && pass !== '••••••••' ? pass : existing?.pass;
 
   db.prepare(
-    `INSERT INTO smtp_settings (id, host, port, secure, user, pass, from_name, from_email, send_delay_ms)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO smtp_settings (id, host, port, secure, user, pass, from_name, from_email, send_delay_ms, public_base_url)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        host = excluded.host, port = excluded.port, secure = excluded.secure,
        user = excluded.user, pass = excluded.pass, from_name = excluded.from_name,
-       from_email = excluded.from_email, send_delay_ms = excluded.send_delay_ms`
-  ).run(host, Number(port), secure ? 1 : 0, user, finalPass, fromName, fromEmail, Number(sendDelayMs) || 1000);
+       from_email = excluded.from_email, send_delay_ms = excluded.send_delay_ms,
+       public_base_url = excluded.public_base_url`
+  ).run(
+    host,
+    Number(port),
+    secure ? 1 : 0,
+    user,
+    finalPass,
+    fromName,
+    fromEmail,
+    Number(sendDelayMs) || 1000,
+    (publicBaseUrl || '').replace(/\/+$/, '')
+  );
 
   res.json({ ok: true });
 });

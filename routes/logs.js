@@ -7,7 +7,7 @@ router.get('/', (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 500);
   const logs = db
     .prepare(
-      `SELECT cl.id, cl.recipient_email, cl.status, cl.error, cl.sent_at,
+      `SELECT cl.id, cl.recipient_email, cl.status, cl.error, cl.sent_at, cl.opened_at, cl.open_count,
               c.id AS campaign_id, c.subject AS campaign_subject
        FROM campaign_logs cl
        JOIN campaigns c ON c.id = cl.campaign_id
