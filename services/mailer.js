@@ -54,6 +54,37 @@ function personalize(html, recipient) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Wraps a bare HTML fragment (e.g. pasted from the HTML Source editor) in a
+// full document with a charset, since malformed/incomplete HTML is itself a
+// spam signal to most inbox providers.
+function ensureFullHtmlDocument(html) {
+  if (/<html[\s>]/i.test(html)) return html;
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body>${html}</body>
+</html>`;
+}
+
+// Spam filters weight the presence of a plain-text alternative heavily —
+// HTML-only mail is treated as more suspicious. This is a best-effort strip,
+// not a full HTML-to-text renderer.
+function htmlToPlainText(html) {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|tr|h[1-6]|li)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 async function runCampaign(campaignId) {
   const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
   if (!campaign) return;
@@ -77,11 +108,20 @@ async function runCampaign(campaignId) {
   for (const recipient of recipients) {
     const data = recipient.data ? JSON.parse(recipient.data) : {};
     const recipientForTemplate = { name: recipient.name, email: recipient.email, data };
-    const html = personalize(template.html_body, recipientForTemplate);
+    const rawHtml = personalize(template.html_body, recipientForTemplate);
+    const html = ensureFullHtmlDocument(rawHtml);
+    const text = htmlToPlainText(rawHtml);
     const subject = personalize(campaign.subject, recipientForTemplate);
 
     try {
-      await transporter.sendMail({ from, to: recipient.email, subject, html });
+      await transporter.sendMail({
+        from,
+        to: recipient.email,
+        subject,
+        html,
+        text,
+        headers: { 'List-Unsubscribe': `<mailto:${settings.fromEmail}?subject=unsubscribe>` },
+      });
       insertLog.run(campaignId, recipient.email, 'sent', null);
       bumpSent.run(campaignId);
     } catch (err) {
