@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS templates (
   name TEXT NOT NULL,
   subject TEXT NOT NULL,
   html_body TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'General',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -66,5 +67,10 @@ CREATE TABLE IF NOT EXISTS campaign_logs (
   sent_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `);
+
+const templateColumns = db.prepare("PRAGMA table_info(templates)").all().map((c) => c.name);
+if (!templateColumns.includes('category')) {
+  db.exec("ALTER TABLE templates ADD COLUMN category TEXT NOT NULL DEFAULT 'General'");
+}
 
 module.exports = db;

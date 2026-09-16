@@ -1,7 +1,7 @@
-// ---------- Tabs ----------
-document.querySelectorAll('.tab-btn').forEach((btn) => {
+// ---------- Sidebar navigation ----------
+document.querySelectorAll('.nav-item').forEach((btn) => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach((b) => b.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
@@ -9,6 +9,8 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
     if (btn.dataset.tab === 'recipients') loadLists();
     if (btn.dataset.tab === 'templates') loadTemplates();
     if (btn.dataset.tab === 'settings') loadSettings();
+    if (btn.dataset.tab === 'analytics') loadAnalytics();
+    if (btn.dataset.tab === 'logs') loadLogs();
   });
 });
 
@@ -36,25 +38,46 @@ async function api(path, options = {}) {
   return data;
 }
 
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str ?? '';
+  return div.innerHTML;
+}
+
+function formatDate(isoLike) {
+  if (!isoLike) return '';
+  const d = new Date(isoLike.replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return isoLike;
+  return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+const TEMPLATE_ICONS = ['icon-purple', 'icon-pink', 'icon-blue', 'icon-green', 'icon-orange'];
+
 // ---------- Templates ----------
 async function loadTemplates() {
   const templates = await api('/templates');
   const list = document.getElementById('template-list');
-  list.innerHTML = templates.length ? '' : '<p class="hint">No templates yet.</p>';
-  for (const t of templates) {
+  list.innerHTML = templates.length ? '' : '<p class="muted">No templates yet.</p>';
+  templates.forEach((t, i) => {
     const el = document.createElement('div');
     el.className = 'list-item';
     el.innerHTML = `
-      <div>
-        <strong>${escapeHtml(t.name)}</strong>
-        <div class="meta">${escapeHtml(t.subject)}</div>
+      <div class="list-item-main">
+        <div class="item-icon ${TEMPLATE_ICONS[i % TEMPLATE_ICONS.length]}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+        </div>
+        <div>
+          <div class="item-title">${escapeHtml(t.name)}</div>
+          <div class="item-sub">${escapeHtml(t.subject)}</div>
+        </div>
       </div>
+      <span class="badge badge-${t.category || 'General'}">${escapeHtml(t.category || 'General')}</span>
       <div class="row-actions">
         <button data-edit="${t.id}">Edit</button>
         <button data-delete="${t.id}" class="danger">Delete</button>
       </div>`;
     list.appendChild(el);
-  }
+  });
   list.querySelectorAll('[data-edit]').forEach((b) =>
     b.addEventListener('click', () => editTemplate(b.dataset.edit))
   );
@@ -73,14 +96,16 @@ async function editTemplate(id) {
   document.getElementById('template-form-title').textContent = `Edit: ${t.name}`;
   document.getElementById('template-name').value = t.name;
   document.getElementById('template-subject').value = t.subject;
+  document.getElementById('template-category').value = t.category || 'General';
   quill.root.innerHTML = t.html_body;
 }
 
 document.getElementById('clear-template-btn').addEventListener('click', () => {
   document.getElementById('template-id').value = '';
-  document.getElementById('template-form-title').textContent = 'New Template';
+  document.getElementById('template-form-title').textContent = 'Create New Template';
   document.getElementById('template-name').value = '';
   document.getElementById('template-subject').value = '';
+  document.getElementById('template-category').value = 'General';
   quill.root.innerHTML = '';
 });
 
@@ -88,6 +113,7 @@ document.getElementById('save-template-btn').addEventListener('click', async () 
   const id = document.getElementById('template-id').value;
   const name = document.getElementById('template-name').value.trim();
   const subject = document.getElementById('template-subject').value.trim();
+  const category = document.getElementById('template-category').value;
   const html_body = quill.root.innerHTML;
 
   if (!name || !subject || quill.getText().trim().length === 0) {
@@ -96,9 +122,9 @@ document.getElementById('save-template-btn').addEventListener('click', async () 
   }
 
   if (id) {
-    await api(`/templates/${id}`, { method: 'PUT', body: JSON.stringify({ name, subject, html_body }) });
+    await api(`/templates/${id}`, { method: 'PUT', body: JSON.stringify({ name, subject, html_body, category }) });
   } else {
-    await api('/templates', { method: 'POST', body: JSON.stringify({ name, subject, html_body }) });
+    await api('/templates', { method: 'POST', body: JSON.stringify({ name, subject, html_body, category }) });
   }
   document.getElementById('clear-template-btn').click();
   loadTemplates();
@@ -108,20 +134,25 @@ document.getElementById('save-template-btn').addEventListener('click', async () 
 async function loadLists() {
   const lists = await api('/recipients/lists');
   const el = document.getElementById('list-list');
-  el.innerHTML = lists.length ? '' : '<p class="hint">No recipient lists yet.</p>';
-  for (const l of lists) {
+  el.innerHTML = lists.length ? '' : '<p class="muted">No recipient lists yet.</p>';
+  lists.forEach((l) => {
     const item = document.createElement('div');
     item.className = 'list-item';
     item.innerHTML = `
-      <div>
-        <strong>${escapeHtml(l.name)}</strong>
-        <div class="meta">${l.recipient_count} recipients</div>
+      <div class="list-item-main">
+        <div class="item-icon icon-green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        </div>
+        <div>
+          <div class="item-title">${escapeHtml(l.name)}</div>
+          <div class="item-sub">${l.recipient_count} recipients</div>
+        </div>
       </div>
       <div class="row-actions">
         <button data-delete-list="${l.id}" class="danger">Delete</button>
       </div>`;
     el.appendChild(item);
-  }
+  });
   el.querySelectorAll('[data-delete-list]').forEach((b) =>
     b.addEventListener('click', async () => {
       if (!confirm('Delete this list and all its recipients?')) return;
@@ -200,22 +231,89 @@ let campaignPollTimer = null;
 async function loadCampaigns() {
   const campaigns = await api('/campaigns');
   const el = document.getElementById('campaign-list-view');
-  el.innerHTML = campaigns.length ? '' : '<p class="hint">No campaigns yet.</p>';
-  for (const c of campaigns) {
+  el.innerHTML = campaigns.length ? '' : '<p class="muted">No campaigns yet.</p>';
+  campaigns.forEach((c) => {
     const item = document.createElement('div');
     item.className = 'list-item';
     item.innerHTML = `
-      <div>
-        <strong>${escapeHtml(c.subject)}</strong>
-        <div class="meta">Sent ${c.sent_count}/${c.total} · Failed ${c.failed_count}</div>
+      <div class="list-item-main">
+        <div class="item-icon icon-orange">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+        </div>
+        <div>
+          <div class="item-title">${escapeHtml(c.subject)}</div>
+          <div class="item-sub">Sent ${c.sent_count}/${c.total} · Failed ${c.failed_count}</div>
+        </div>
       </div>
       <span class="status-badge status-${c.status}">${c.status}</span>`;
     el.appendChild(item);
-  }
+  });
 
   const hasActive = campaigns.some((c) => c.status === 'pending' || c.status === 'sending');
   clearTimeout(campaignPollTimer);
   if (hasActive) campaignPollTimer = setTimeout(loadCampaigns, 2000);
+}
+
+// ---------- Analytics ----------
+async function loadAnalytics() {
+  const stats = await api('/analytics');
+  const grid = document.getElementById('stat-grid');
+  const rate = stats.deliveryRate === null ? '—' : `${stats.deliveryRate}%`;
+  grid.innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Templates</div>
+      <div class="stat-value">${stats.templateCount}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Recipients</div>
+      <div class="stat-value">${stats.recipientCount}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Emails Sent</div>
+      <div class="stat-value">${stats.totalSent}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Delivery Rate</div>
+      <div class="stat-value">${rate}</div>
+    </div>`;
+
+  const list = document.getElementById('analytics-campaigns');
+  list.innerHTML = stats.recentCampaigns.length ? '' : '<p class="muted">No campaigns yet.</p>';
+  stats.recentCampaigns.forEach((c) => {
+    const item = document.createElement('div');
+    item.className = 'list-item';
+    item.innerHTML = `
+      <div class="list-item-main">
+        <div class="item-icon icon-blue">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+        </div>
+        <div>
+          <div class="item-title">${escapeHtml(c.subject)}</div>
+          <div class="item-sub">${escapeHtml(c.template_name || '—')} → ${escapeHtml(c.list_name || '—')} · ${formatDate(c.created_at)}</div>
+        </div>
+      </div>
+      <span class="status-badge status-${c.status}">${c.status}</span>`;
+    list.appendChild(item);
+  });
+}
+
+// ---------- Logs ----------
+async function loadLogs() {
+  const logs = await api('/logs?limit=200');
+  const body = document.getElementById('logs-body');
+  const empty = document.getElementById('logs-empty');
+  body.innerHTML = '';
+  empty.style.display = logs.length ? 'none' : 'block';
+  logs.forEach((l) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${escapeHtml(l.recipient_email)}</td>
+      <td>${escapeHtml(l.campaign_subject)}</td>
+      <td><span class="status-badge status-${l.status}">${l.status}</span></td>
+      <td>${escapeHtml(l.error || '—')}</td>
+      <td>${formatDate(l.sent_at)}</td>`;
+    body.appendChild(tr);
+  });
 }
 
 // ---------- Settings ----------
@@ -229,6 +327,18 @@ async function loadSettings() {
   document.getElementById('smtp-from-name').value = s.fromName || '';
   document.getElementById('smtp-from-email').value = s.fromEmail || '';
   document.getElementById('smtp-delay').value = s.sendDelayMs || 1000;
+  updateUserBadge(s);
+}
+
+function updateUserBadge(s) {
+  const nameEl = document.getElementById('user-name');
+  const emailEl = document.getElementById('user-email');
+  const avatarEl = document.getElementById('user-avatar');
+  if (s.fromEmail) {
+    nameEl.textContent = s.fromName || s.fromEmail;
+    emailEl.textContent = s.fromEmail;
+    avatarEl.textContent = (s.fromName || s.fromEmail).charAt(0).toUpperCase();
+  }
 }
 
 document.getElementById('save-settings-btn').addEventListener('click', async () => {
@@ -246,6 +356,7 @@ document.getElementById('save-settings-btn').addEventListener('click', async () 
   try {
     await api('/settings', { method: 'POST', body: JSON.stringify(payload) });
     resultEl.textContent = 'Settings saved.';
+    updateUserBadge(payload);
   } catch (err) {
     resultEl.textContent = `Error: ${err.message}`;
   }
@@ -262,11 +373,15 @@ document.getElementById('test-settings-btn').addEventListener('click', async () 
   }
 });
 
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
+// ---------- Global search (client-side filter across templates/campaigns/recipients lists) ----------
+document.getElementById('global-search').addEventListener('input', (e) => {
+  const q = e.target.value.trim().toLowerCase();
+  document.querySelectorAll('.tab-panel.active .list-item').forEach((item) => {
+    const text = item.textContent.toLowerCase();
+    item.style.display = !q || text.includes(q) ? '' : 'none';
+  });
+});
 
 // ---------- Init ----------
 loadTemplates();
+loadSettings();
