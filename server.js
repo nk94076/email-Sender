@@ -1,0 +1,26 @@
+require('dotenv').config();
+const express = require('express');
+const path = require('path');
+
+require('./db/db'); // ensures tables exist on boot
+
+const templatesRouter = require('./routes/templates');
+const recipientsRouter = require('./routes/recipients');
+const campaignsRouter = require('./routes/campaigns');
+const settingsRouter = require('./routes/settings');
+
+const app = express();
+app.use(express.json({ limit: '10mb' }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use('/api/templates', templatesRouter);
+app.use('/api/recipients', recipientsRouter);
+app.use('/api/campaigns', campaignsRouter);
+app.use('/api/settings', settingsRouter);
+
+app.get('/health', (req, res) => res.json({ ok: true }));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Email Sender running at http://localhost:${PORT}`);
+});

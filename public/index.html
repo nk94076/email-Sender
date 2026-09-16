@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bulk Emailer</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<header class="topbar">
+  <h1>📧 Bulk Emailer</h1>
+  <nav>
+    <button class="tab-btn active" data-tab="templates">Templates</button>
+    <button class="tab-btn" data-tab="recipients">Recipients</button>
+    <button class="tab-btn" data-tab="campaigns">Campaigns</button>
+    <button class="tab-btn" data-tab="settings">SMTP Settings</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- TEMPLATES TAB -->
+  <section id="tab-templates" class="tab-panel active">
+    <div class="grid-2">
+      <div class="card">
+        <h2 id="template-form-title">New Template</h2>
+        <input type="hidden" id="template-id" />
+        <label>Template name</label>
+        <input type="text" id="template-name" placeholder="e.g. September Newsletter" />
+
+        <label>Subject line</label>
+        <input type="text" id="template-subject" placeholder="e.g. Hi {{name}}, check this out!" />
+
+        <label>Body</label>
+        <div id="editor"></div>
+        <p class="hint">Use <code>{{name}}</code>, <code>{{email}}</code> or any custom CSV column as <code>{{column}}</code> for personalization. Use the editor's image/video/link buttons to embed media.</p>
+
+        <div class="actions">
+          <button id="save-template-btn" class="primary">Save Template</button>
+          <button id="clear-template-btn" class="secondary">New / Clear</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Saved Templates</h2>
+        <div id="template-list" class="list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RECIPIENTS TAB -->
+  <section id="tab-recipients" class="tab-panel">
+    <div class="grid-2">
+      <div class="card">
+        <h2>Upload Recipients (CSV)</h2>
+        <p class="hint">CSV must have an <code>email</code> column. Optional: <code>name</code> and any other custom columns (e.g. <code>company</code>).</p>
+        <label>List name</label>
+        <input type="text" id="list-name" placeholder="e.g. customers-sept" />
+        <label>CSV file</label>
+        <input type="file" id="csv-file" accept=".csv" />
+        <div class="actions">
+          <button id="upload-btn" class="primary">Upload</button>
+        </div>
+        <p id="upload-result" class="hint"></p>
+      </div>
+
+      <div class="card">
+        <h2>Recipient Lists</h2>
+        <div id="list-list" class="list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CAMPAIGNS TAB -->
+  <section id="tab-campaigns" class="tab-panel">
+    <div class="grid-2">
+      <div class="card">
+        <h2>New Campaign</h2>
+        <label>Template</label>
+        <select id="campaign-template"></select>
+        <label>Recipient List</label>
+        <select id="campaign-list"></select>
+        <label>Subject override (optional)</label>
+        <input type="text" id="campaign-subject" placeholder="Leave blank to use template subject" />
+        <div class="actions">
+          <button id="send-campaign-btn" class="primary">Send Campaign</button>
+        </div>
+        <p id="campaign-result" class="hint"></p>
+      </div>
+
+      <div class="card">
+        <h2>Campaign History</h2>
+        <div id="campaign-list-view" class="list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SETTINGS TAB -->
+  <section id="tab-settings" class="tab-panel">
+    <div class="card narrow">
+      <h2>SMTP Settings</h2>
+      <label>Host</label>
+      <input type="text" id="smtp-host" placeholder="smtp.gmail.com" />
+      <label>Port</label>
+      <input type="number" id="smtp-port" placeholder="587" />
+      <label><input type="checkbox" id="smtp-secure" /> Use SSL (port 465)</label>
+      <label>Username</label>
+      <input type="text" id="smtp-user" placeholder="you@gmail.com" />
+      <label>Password / App Password</label>
+      <input type="password" id="smtp-pass" placeholder="••••••••" />
+      <label>From Name</label>
+      <input type="text" id="smtp-from-name" placeholder="Your Name" />
+      <label>From Email</label>
+      <input type="text" id="smtp-from-email" placeholder="you@gmail.com" />
+      <label>Delay between emails (ms)</label>
+      <input type="number" id="smtp-delay" placeholder="1000" />
+      <div class="actions">
+        <button id="save-settings-btn" class="primary">Save</button>
+        <button id="test-settings-btn" class="secondary">Test Connection</button>
+      </div>
+      <p id="settings-result" class="hint"></p>
+    </div>
+  </section>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
