@@ -36,6 +36,17 @@ app.use('/t', trackRouter);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
+// Catches anything an individual route didn't handle itself (multer file-size
+// limits, unexpected DB errors, etc.) so the client always gets clean JSON
+// instead of Express's default HTML error page.
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  console.error(err);
+  const status = err.status || (err.code === 'LIMIT_FILE_SIZE' ? 413 : 500);
+  const message = err.code === 'LIMIT_FILE_SIZE' ? 'File is too large.' : err.message || 'Something went wrong.';
+  res.status(status).json({ error: message });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Email Sender running at http://localhost:${PORT}`);

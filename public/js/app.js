@@ -323,10 +323,20 @@ document.getElementById('save-template-btn').addEventListener('click', async () 
 });
 
 // ---------- Recipients ----------
+let recipientLists = [];
+
 async function loadLists() {
-  const lists = await api('/recipients/lists');
+  recipientLists = await api('/recipients/lists');
+  renderLists(recipientLists);
+}
+
+function renderLists(lists) {
   const el = document.getElementById('list-list');
-  el.innerHTML = lists.length ? '' : '<p class="muted">No recipient lists yet.</p>';
+  const emptyState = document.getElementById('list-empty-state');
+  const hasAnyLists = recipientLists.length > 0;
+  el.style.display = hasAnyLists ? '' : 'none';
+  emptyState.style.display = hasAnyLists ? 'none' : 'block';
+  el.innerHTML = hasAnyLists && lists.length === 0 ? '<p class="muted">No lists match your search.</p>' : '';
   lists.forEach((l) => {
     const item = document.createElement('div');
     item.className = 'list-item';
@@ -354,6 +364,64 @@ async function loadLists() {
   );
 }
 
+// ---------- Recipient list search ----------
+document.getElementById('list-search').addEventListener('input', (e) => {
+  const q = e.target.value.trim().toLowerCase();
+  renderLists(recipientLists.filter((l) => l.name.toLowerCase().includes(q)));
+});
+
+// ---------- "Create List" shortcuts ----------
+function focusListNameField() {
+  document.getElementById('list-name').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  document.getElementById('list-name').focus();
+}
+document.getElementById('header-create-list-btn').addEventListener('click', focusListNameField);
+document.getElementById('empty-create-list-btn').addEventListener('click', focusListNameField);
+
+// ---------- Download sample CSV ----------
+document.getElementById('download-sample-btn').addEventListener('click', () => {
+  const csv = 'email,name,company\nalice@example.com,Alice,Acme Inc\nbob@example.com,Bob,Widgets Co\n';
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'recipients_sample.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ---------- CSV drag & drop ----------
+const csvDropzone = document.getElementById('csv-dropzone');
+const csvFileInput = document.getElementById('csv-file');
+const csvFilenameEl = document.getElementById('csv-filename');
+
+function showCsvFilename() {
+  csvFilenameEl.textContent = csvFileInput.files[0] ? `Selected: ${csvFileInput.files[0].name}` : '';
+}
+
+document.getElementById('csv-browse-btn').addEventListener('click', () => csvFileInput.click());
+csvFileInput.addEventListener('change', showCsvFilename);
+
+['dragenter', 'dragover'].forEach((evt) =>
+  csvDropzone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    csvDropzone.classList.add('drag-over');
+  })
+);
+['dragleave', 'drop'].forEach((evt) =>
+  csvDropzone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    csvDropzone.classList.remove('drag-over');
+  })
+);
+csvDropzone.addEventListener('drop', (e) => {
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    csvFileInput.files = e.dataTransfer.files;
+    showCsvFilename();
+  }
+});
+
 document.getElementById('upload-btn').addEventListener('click', async () => {
   const listName = document.getElementById('list-name').value.trim();
   const fileInput = document.getElementById('csv-file');
@@ -376,6 +444,9 @@ document.getElementById('upload-btn').addEventListener('click', async () => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     resultEl.textContent = `Imported ${data.imported} recipients into "${data.listName}".`;
+    fileInput.value = '';
+    document.getElementById('list-name').value = '';
+    showCsvFilename();
     loadLists();
   } catch (err) {
     resultEl.textContent = `Error: ${err.message}`;
