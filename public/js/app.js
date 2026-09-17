@@ -11,8 +11,27 @@ document.querySelectorAll('.nav-item').forEach((btn) => {
     if (btn.dataset.tab === 'settings') loadSettings();
     if (btn.dataset.tab === 'analytics') loadAnalytics();
     if (btn.dataset.tab === 'logs') loadLogs();
+    closeSidebar();
   });
 });
+
+// ---------- Mobile sidebar drawer ----------
+const sidebarEl = document.getElementById('sidebar');
+const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+
+function openSidebar() {
+  sidebarEl.classList.add('open');
+  sidebarBackdrop.classList.add('visible');
+}
+
+function closeSidebar() {
+  sidebarEl.classList.remove('open');
+  sidebarBackdrop.classList.remove('visible');
+}
+
+document.getElementById('hamburger-btn').addEventListener('click', openSidebar);
+document.getElementById('sidebar-close-btn').addEventListener('click', closeSidebar);
+sidebarBackdrop.addEventListener('click', closeSidebar);
 
 // ---------- Quill editor ----------
 const quill = new Quill('#editor', {
@@ -393,7 +412,8 @@ async function loadAnalytics() {
   const stats = await api('/analytics');
   const grid = document.getElementById('stat-grid');
   const rate = stats.deliveryRate === null ? '—' : `${stats.deliveryRate}%`;
-  const openRate = stats.openRate === null ? '— (tracking off)' : `${stats.openRate}%`;
+  const openRate = stats.openRate === null ? '—' : `${stats.openRate}%`;
+  const openRateNote = stats.openRate === null ? '<div class="stat-note">tracking off</div>' : '';
   grid.innerHTML = `
     <div class="stat-card">
       <div class="stat-label">Templates</div>
@@ -418,6 +438,7 @@ async function loadAnalytics() {
     <div class="stat-card">
       <div class="stat-label">Open Rate</div>
       <div class="stat-value">${openRate}</div>
+      ${openRateNote}
     </div>`;
 
   const list = document.getElementById('analytics-campaigns');
