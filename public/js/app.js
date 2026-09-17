@@ -34,17 +34,40 @@ document.getElementById('sidebar-close-btn').addEventListener('click', closeSide
 sidebarBackdrop.addEventListener('click', closeSidebar);
 
 // ---------- Quill editor ----------
+const quillIcons = Quill.import('ui/icons');
+quillIcons.undo = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 1 0 3-7"/></svg>';
+quillIcons.redo = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 7v6h-6"/><path d="M21 13a9 9 0 1 1-3-7"/></svg>';
+
 const quill = new Quill('#editor', {
   theme: 'snow',
   modules: {
-    toolbar: [
-      [{ header: [1, 2, 3, false] }],
-      ['bold', 'italic', 'underline'],
-      [{ list: 'ordered' }, { list: 'bullet' }],
-      ['link', 'image', 'video'],
-      ['clean'],
-    ],
+    history: { delay: 1000, maxStack: 100 },
+    toolbar: {
+      container: [
+        ['undo', 'redo'],
+        [{ header: [1, 2, 3, false] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ align: [] }],
+        [{ list: 'ordered' }, { list: 'bullet' }],
+        ['link', 'image', 'video'],
+        ['clean'],
+      ],
+      handlers: {
+        undo: () => quill.history.undo(),
+        redo: () => quill.history.redo(),
+      },
+    },
   },
+});
+
+function updateWordCount() {
+  const words = quill.getText().trim().split(/\s+/).filter(Boolean);
+  document.getElementById('word-count').textContent = `${words.length} word${words.length === 1 ? '' : 's'}`;
+}
+quill.on('text-change', updateWordCount);
+
+document.getElementById('expand-editor-btn').addEventListener('click', () => {
+  document.getElementById('template-form-card').classList.toggle('fullscreen');
 });
 
 // Quill's default image button embeds uploads as base64, which Gmail and most
@@ -159,7 +182,10 @@ const TEMPLATE_ICONS = ['icon-purple', 'icon-pink', 'icon-blue', 'icon-green', '
 async function loadTemplates() {
   const templates = await api('/templates');
   const list = document.getElementById('template-list');
-  list.innerHTML = templates.length ? '' : '<p class="muted">No templates yet.</p>';
+  const emptyState = document.getElementById('template-empty-state');
+  list.style.display = templates.length ? '' : 'none';
+  emptyState.style.display = templates.length ? 'none' : 'block';
+  list.innerHTML = '';
   templates.forEach((t, i) => {
     const el = document.createElement('div');
     el.className = 'list-item';
@@ -192,26 +218,87 @@ async function loadTemplates() {
   );
 }
 
+function setTemplateBreadcrumb(label) {
+  document.getElementById('template-breadcrumb').innerHTML = `Templates <span>&rsaquo;</span> <strong>${escapeHtml(label)}</strong>`;
+}
+
 async function editTemplate(id) {
   const t = await api(`/templates/${id}`);
   document.getElementById('template-id').value = t.id;
-  document.getElementById('template-form-title').textContent = `Edit: ${t.name}`;
+  document.getElementById('template-form-title').textContent = `Edit Template: ${t.name}`;
   document.getElementById('template-name').value = t.name;
   document.getElementById('template-subject').value = t.subject;
   document.getElementById('template-category').value = t.category || 'General';
   setEditorMode('visual');
   quill.root.innerHTML = t.html_body;
+  updateWordCount();
+  setTemplateBreadcrumb(`Edit: ${t.name}`);
+  document.getElementById('template-form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 document.getElementById('clear-template-btn').addEventListener('click', () => {
   document.getElementById('template-id').value = '';
-  document.getElementById('template-form-title').textContent = 'Create New Template';
+  document.getElementById('template-form-title').textContent = 'Create New Email Template';
   document.getElementById('template-name').value = '';
   document.getElementById('template-subject').value = '';
   document.getElementById('template-category').value = 'General';
   setEditorMode('visual');
   quill.root.innerHTML = '';
   htmlSourceBox.value = '';
+  updateWordCount();
+  setTemplateBreadcrumb('Create New');
+});
+
+document.getElementById('empty-create-btn').addEventListener('click', () => {
+  document.getElementById('template-name').focus();
+});
+
+document.getElementById('view-templates-btn').addEventListener('click', () => {
+  document.getElementById('template-list').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+// ---------- Add Variable dropdown (subject line) ----------
+const subjectVariableBtn = document.getElementById('subject-variable-btn');
+const subjectVariableMenu = document.getElementById('subject-variable-menu');
+
+subjectVariableBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  subjectVariableMenu.classList.toggle('open');
+});
+
+document.addEventListener('click', () => subjectVariableMenu.classList.remove('open'));
+
+subjectVariableMenu.querySelectorAll('[data-var]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const input = document.getElementById('template-subject');
+    const token = `{{${btn.dataset.var}}}`;
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    input.value = input.value.slice(0, start) + token + input.value.slice(end);
+    input.focus();
+    input.setSelectionRange(start + token.length, start + token.length);
+    subjectVariableMenu.classList.remove('open');
+  });
+});
+
+// ---------- Preview Email modal ----------
+const previewBackdrop = document.getElementById('preview-modal-backdrop');
+
+document.getElementById('preview-template-btn').addEventListener('click', () => {
+  const subject = document.getElementById('template-subject').value.trim() || '(no subject)';
+  const html = getEditorHtml();
+  const sample = { name: 'John Doe', email: 'john@example.com' };
+  const rendered = html.replace(/{{\s*(\w+)\s*}}/g, (m, key) => sample[key] ?? m);
+  const renderedSubject = subject.replace(/{{\s*(\w+)\s*}}/g, (m, key) => sample[key] ?? m);
+
+  document.getElementById('preview-modal-subject').innerHTML = `Subject: <strong>${escapeHtml(renderedSubject)}</strong>`;
+  document.getElementById('preview-modal-frame').srcdoc = rendered;
+  previewBackdrop.classList.add('open');
+});
+
+document.getElementById('preview-modal-close').addEventListener('click', () => previewBackdrop.classList.remove('open'));
+previewBackdrop.addEventListener('click', (e) => {
+  if (e.target === previewBackdrop) previewBackdrop.classList.remove('open');
 });
 
 document.getElementById('save-template-btn').addEventListener('click', async () => {
