@@ -27,8 +27,12 @@ router.get('/lists/:id', (req, res) => {
 });
 
 router.delete('/lists/:id', (req, res) => {
-  db.prepare('DELETE FROM recipient_lists WHERE id = ?').run(req.params.id);
-  res.json({ ok: true });
+  try {
+    db.prepare('DELETE FROM recipient_lists WHERE id = ?').run(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: `Could not delete list: ${err.message}` });
+  }
 });
 
 // Upload a CSV with headers: email,name,<any custom fields...>

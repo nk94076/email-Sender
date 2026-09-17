@@ -5,6 +5,7 @@ const dbPath = path.join(__dirname, '..', 'data.sqlite');
 const db = new Database(dbPath);
 
 db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS templates (
@@ -67,8 +68,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
 
 CREATE TABLE IF NOT EXISTS campaigns (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  template_id INTEGER NOT NULL REFERENCES templates(id),
-  list_id INTEGER NOT NULL REFERENCES recipient_lists(id),
+  template_id INTEGER REFERENCES templates(id) ON DELETE SET NULL,
+  list_id INTEGER REFERENCES recipient_lists(id) ON DELETE SET NULL,
   smtp_profile_id INTEGER REFERENCES smtp_profiles(id) ON DELETE SET NULL,
   subject TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
@@ -119,6 +120,59 @@ if (!settingsColumns.includes('public_base_url')) {
 const campaignColumns2 = db.prepare('PRAGMA table_info(campaigns)').all().map((c) => c.name);
 if (!campaignColumns2.includes('smtp_profile_id')) {
   db.exec('ALTER TABLE campaigns ADD COLUMN smtp_profile_id INTEGER REFERENCES smtp_profiles(id) ON DELETE SET NULL');
+}
+
+// Older deployments created campaigns.template_id/list_id as NOT NULL with
+// no ON DELETE action, so deleting a template or recipient list that had
+// ever been used in a campaign threw a raw FOREIGN KEY constraint error
+// (surfaced to users as a 500 on the delete button). SQLite can't alter an
+// existing column's FK behavior in place, so rebuild the table.
+const campaignFks = db.prepare('PRAGMA foreign_key_list(campaigns)').all();
+const templateFk = campaignFks.find((fk) => fk.table === 'templates');
+const listFk = campaignFks.find((fk) => fk.table === 'recipient_lists');
+const needsFkRebuild = (templateFk && templateFk.on_delete !== 'SET NULL') || (listFk && listFk.on_delete !== 'SET NULL');
+if (needsFkRebuild) {
+  const existingCols = db.prepare('PRAGMA table_info(campaigns)').all().map((c) => c.name);
+  const keepCols = [
+    'id',
+    'template_id',
+    'list_id',
+    'smtp_profile_id',
+    'subject',
+    'status',
+    'total',
+    'sent_count',
+    'failed_count',
+    'include_unsubscribe_header',
+    'created_at',
+    'started_at',
+    'finished_at',
+  ].filter((c) => existingCols.includes(c));
+
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.transaction(() => {
+    db.exec('ALTER TABLE campaigns RENAME TO campaigns_pre_fk_fix');
+    db.exec(`
+      CREATE TABLE campaigns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_id INTEGER REFERENCES templates(id) ON DELETE SET NULL,
+        list_id INTEGER REFERENCES recipient_lists(id) ON DELETE SET NULL,
+        smtp_profile_id INTEGER REFERENCES smtp_profiles(id) ON DELETE SET NULL,
+        subject TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        total INTEGER NOT NULL DEFAULT 0,
+        sent_count INTEGER NOT NULL DEFAULT 0,
+        failed_count INTEGER NOT NULL DEFAULT 0,
+        include_unsubscribe_header INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        started_at TEXT,
+        finished_at TEXT
+      )
+    `);
+    db.exec(`INSERT INTO campaigns (${keepCols.join(', ')}) SELECT ${keepCols.join(', ')} FROM campaigns_pre_fk_fix`);
+    db.exec('DROP TABLE campaigns_pre_fk_fix');
+  })();
+  db.exec('PRAGMA foreign_keys = ON');
 }
 
 // One-time migration: move the old single-row SMTP config into the new
